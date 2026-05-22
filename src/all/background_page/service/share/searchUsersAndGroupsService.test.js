@@ -9,10 +9,11 @@
  * @copyright     Copyright (c) Passbolt SA (https://www.passbolt.com)
  * @license       https://opensource.org/licenses/AGPL-3.0 AGPL License
  * @link          https://www.passbolt.com Passbolt(tm)
- * @since         4.9.0
+ * @since         5.13.0
  */
-
-import SearchUsersAndGroupsController from "./searchUsersAndGroupsController";
+import { enableFetchMocks } from "jest-fetch-mock";
+import { mockApiResponse } from "../../../../../test/mocks/mockApiResponse";
+import SearchUsersAndGroupsService from "./searchUsersAndGroupsService";
 import UserAndGroupSearchResultsCollection from "../../model/entity/userAndGroupSearchResultEntity/userAndGroupSearchResultCollection";
 import {
   defaultUserSearchResultDto,
@@ -22,34 +23,39 @@ import { defaultApiClientOptions } from "passbolt-styleguide/src/shared/lib/apiC
 
 beforeEach(() => {
   jest.clearAllMocks();
+  enableFetchMocks();
 });
 
-describe("SearchUsersAndGroupsController", () => {
-  describe("SearchUsersAndGroupsController::exec", () => {
-    it("should delegate to SearchUsersAndGroupsService and return the result", async () => {
-      expect.assertions(3);
+describe("SearchUsersAndGroupsService", () => {
+  describe("::search", () => {
+    it("should call the API with the right parameters and return a UserAndGroupSearchResultsCollection", async () => {
+      expect.assertions(5);
 
       const serverResponseDto = [defaultUserSearchResultDto(), defaultGroupSearchResultDto()];
-      const expectedResult = new UserAndGroupSearchResultsCollection(serverResponseDto);
       const searchedKeyword = "test";
 
-      const controller = new SearchUsersAndGroupsController(null, null, defaultApiClientOptions());
-      jest.spyOn(controller.searchUsersAndGroupsService, "search").mockResolvedValue(expectedResult);
+      fetch.doMockOnceIf(/share\/search-aros\.json/, async (request) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get("filter[search]")).toStrictEqual(searchedKeyword);
+        expect(url.searchParams.get("contain[profile]")).toStrictEqual("1");
+        expect(url.searchParams.get("contain[user_count]")).toStrictEqual("1");
+        return await mockApiResponse(serverResponseDto);
+      });
 
-      const result = await controller.exec(searchedKeyword);
+      const service = new SearchUsersAndGroupsService(defaultApiClientOptions());
+      const result = await service.search(searchedKeyword);
 
-      expect(controller.searchUsersAndGroupsService.search).toHaveBeenCalledTimes(1);
-      expect(controller.searchUsersAndGroupsService.search).toHaveBeenCalledWith(searchedKeyword);
-      expect(result).toStrictEqual(expectedResult);
+      expect(result).toBeInstanceOf(UserAndGroupSearchResultsCollection);
+      expect(result).toStrictEqual(new UserAndGroupSearchResultsCollection(serverResponseDto));
     });
 
     it("should throw an error if the keyword is not a valid string", async () => {
       expect.assertions(1);
 
-      const controller = new SearchUsersAndGroupsController(null, null, defaultApiClientOptions());
+      const service = new SearchUsersAndGroupsService(defaultApiClientOptions());
 
       try {
-        await controller.exec(1);
+        await service.search(1);
       } catch (e) {
         expect(e).toStrictEqual(new Error("keyword is not a valid string"));
       }
