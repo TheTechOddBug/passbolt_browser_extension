@@ -11,14 +11,12 @@
  * @link          https://www.passbolt.com Passbolt(tm)
  * @since         6.0.0
  */
-import GetOrFindSiteSettingsService from "../../service/siteSettings/getOrFindSiteSettingsService";
+import FindAndUpdateSiteSettingsLocalStorageService from "../../service/siteSettings/findAndUpdateSiteSettingsLocalStorageService";
 
 /**
- * Returns the site settings, from the cache that fits the session or by fetching from the API.
- * Resolves to null on an offline session with nothing persisted, the one case that cannot fall
- * back to the API.
+ * Retrieve the site settings from the API and update the caches.
  */
-class GetOrFindSiteSettingsController {
+class FindAndUpdateSiteSettingsLocalStorageController {
   /**
    * @param {Worker} worker
    * @param {string} requestId
@@ -28,17 +26,20 @@ class GetOrFindSiteSettingsController {
   constructor(worker, requestId, apiClientOptions, account) {
     this.worker = worker;
     this.requestId = requestId;
-    this.account = account;
-    this.getOrFindSiteSettingsService = new GetOrFindSiteSettingsService(account, apiClientOptions);
+    this.findAndUpdateSiteSettingsLocalStorageService = new FindAndUpdateSiteSettingsLocalStorageService(
+      account,
+      apiClientOptions,
+    );
   }
 
   /**
+   * Controller executor.
    * @returns {Promise<void>}
    */
   async _exec() {
     try {
-      const result = await this.exec.apply(this, arguments);
-      this.worker.port.emit(this.requestId, "SUCCESS", result);
+      const siteSettings = await this.exec();
+      this.worker.port.emit(this.requestId, "SUCCESS", siteSettings);
     } catch (error) {
       console.error(error);
       this.worker.port.emit(this.requestId, "ERROR", error);
@@ -46,11 +47,12 @@ class GetOrFindSiteSettingsController {
   }
 
   /**
-   * @returns {Promise<SiteSettingsEntity|null>} null on an offline session with nothing persisted.
+   * Controller executor.
+   * @returns {Promise<SiteSettingsEntity>}
    */
   async exec() {
-    return this.getOrFindSiteSettingsService.getOrFind();
+    return await this.findAndUpdateSiteSettingsLocalStorageService.findAndUpdateAll();
   }
 }
 
-export default GetOrFindSiteSettingsController;
+export default FindAndUpdateSiteSettingsLocalStorageController;
