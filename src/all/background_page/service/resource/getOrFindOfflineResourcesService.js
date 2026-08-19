@@ -9,19 +9,18 @@
  * @copyright     Copyright (c) Passbolt SA (https://www.passbolt.com)
  * @license       https://opensource.org/licenses/AGPL-3.0 AGPL License
  * @link          https://www.passbolt.com Passbolt(tm)
- * @since         4.9.4
+ * @since         6.0.0
  */
 import ResourceLocalStorage from "../local_storage/resourceLocalStorage";
 import ResourcesCollection from "../../model/entity/resource/resourcesCollection";
-import FindAndUpdateResourcesLocalStorage from "./findAndUpdateResourcesLocalStorageService";
-import { assertArrayUUID } from "passbolt-styleguide/src/shared/utils/assertions";
 import GetOrFindResourceTypesService from "../resourceType/getOrFindResourceTypesService";
+import FindAndUpdateResourcesLocalStorageFromOPFSService from "./findAndUpdateResourcesLocalStorageFromOPFSService";
 
 /**
- * The service aims to get resources from the local storage if it is set, or retrieve them from the API and
- * set the local storage.
+ * The service aims to get resources from the local storage if it is set, or retrieve them from the Offline storage (OPFS)
+ * and set the local storage.
  */
-export default class GetOrFindResourcesService {
+export default class GetOrFindOfflineResourcesService {
   /**
    *
    * @param {AccountEntity} account The user account
@@ -30,7 +29,10 @@ export default class GetOrFindResourcesService {
   constructor(account, apiClientOptions) {
     this.account = account;
     this.getOrFindResourceTypesService = new GetOrFindResourceTypesService(account, apiClientOptions);
-    this.findAndUpdateResourcesLocalStorage = new FindAndUpdateResourcesLocalStorage(account, apiClientOptions);
+    this.findAndUpdateResourcesLocalStorageFromOPFSService = new FindAndUpdateResourcesLocalStorageFromOPFSService(
+      account,
+      apiClientOptions,
+    );
   }
 
   /**
@@ -46,8 +48,8 @@ export default class GetOrFindResourcesService {
       return new ResourcesCollection(resourcesDto, { validate: !hasRuntimeCache });
     }
 
-    // Otherwise retrieve the resources and update the local storage.
-    const resourcesCollection = await this.findAndUpdateResourcesLocalStorage.findAndUpdateAll();
+    // Otherwise retrieve the resources from offline storage and update the local storage.
+    const resourcesCollection = await this.findAndUpdateResourcesLocalStorageFromOPFSService.findAndUpdateAll();
 
     // Validation is not necessary has the data have been refreshed in the runtime cache and validated by the update all.
     return resourcesCollection;
@@ -56,7 +58,7 @@ export default class GetOrFindResourcesService {
   /**
    * Returns the possible resources to suggest given an url.
    * @param {string} url The url to suggest for.
-   * @param {"username"|"password"|"otp"|null} fieldType The field type to suggest for
+   * @param {"username"|"password"|"otp" | null} fieldType The field type to suggest for
    * @return {Promise<ResourcesCollection>}
    */
   async getOrFindSuggested(url, fieldType = null) {
@@ -81,20 +83,6 @@ export default class GetOrFindResourcesService {
 
     // Filter by suggested resources.
     resourcesCollection.filterBySuggestResources(url);
-
-    return resourcesCollection;
-  }
-
-  /**
-   * Returns all the resources matching the given ids.
-   * @param {array<string>} resourceIds The resources to find.
-   * @return {Promise<ResourcesCollection>}
-   */
-  async getOrFindByIds(resourceIds) {
-    assertArrayUUID(resourceIds);
-
-    const resourcesCollection = await this.getOrFindAll();
-    resourcesCollection.filterByPropertyValueIn("id", resourceIds);
 
     return resourcesCollection;
   }

@@ -9,7 +9,7 @@
  * @copyright     Copyright (c) Passbolt SA (https://www.passbolt.com)
  * @license       https://opensource.org/licenses/AGPL-3.0 AGPL License
  * @link          https://www.passbolt.com Passbolt(tm)
- * @since         4.9.4
+ * @since         6.0.0
  */
 
 import ResourceService from "../api/resource/resourceService";
@@ -20,8 +20,7 @@ import { defaultAccountDto } from "../../model/entity/account/accountEntity.test
 import ResourceTypeService from "../api/resourceType/resourceTypeService";
 import { resourceTypesCollectionDto } from "passbolt-styleguide/src/shared/models/entity/resourceType/resourceTypesCollection.test.data";
 import ResourceLocalStorage from "../local_storage/resourceLocalStorage";
-import GetOrFindResourcesService from "./getOrFindResourcesService";
-import FindAndUpdateResourcesLocalStorage from "./findAndUpdateResourcesLocalStorageService";
+import GetOrFindOfflineResourcesService from "./getOrFindOfflineResourcesService";
 import { multipleResourceDtos } from "./getOrFindResourcesService.test.data";
 import { resourceAllTypesDtosCollection } from "passbolt-styleguide/src/shared/models/entity/resource/resourcesCollection.test.data";
 import {
@@ -30,53 +29,52 @@ import {
   resourceWithTotpDto,
 } from "passbolt-styleguide/src/shared/models/entity/resource/resourceEntity.test.data";
 import { defaultResourceMetadataDto } from "passbolt-styleguide/src/shared/models/entity/resource/metadata/resourceMetadataEntity.test.data";
-import { mockPassboltResponse } from "passbolt-styleguide/test/mocks/mockApiResponse";
-import CanUseOfflineStorageService from "../offline/canUseOfflineStorageService";
 import GetOrFindActiveSessionService from "../activeSession/getOrFindActiveSessionService";
 import UserActiveSessionEntity from "passbolt-styleguide/src/shared/models/entity/session/userActiveSessionEntity";
 import { defaultUserActiveSessionDto } from "passbolt-styleguide/src/shared/models/entity/session/userActiveSessionEntity.test.data";
+import FindAndUpdateResourcesLocalStorageFromOPFSService from "./findAndUpdateResourcesLocalStorageFromOPFSService";
+import OfflineResourcesOPFSStorage from "../opfsStorage/offlineResourcesOPFSStorage";
+import ResourceTypesCollection from "passbolt-styleguide/src/shared/models/entity/resourceType/resourceTypesCollection";
 
 jest.useFakeTimers();
 
 beforeEach(() => {
   jest.clearAllMocks();
   jest.clearAllTimers();
-  jest.spyOn(CanUseOfflineStorageService.prototype, "canUseOfflineStorage").mockResolvedValue(false);
   jest
     .spyOn(GetOrFindActiveSessionService.prototype, "getOrFind")
     .mockImplementation(() => new UserActiveSessionEntity(defaultUserActiveSessionDto()));
 });
 
-describe("GetOrFindResourcesService", () => {
+describe("GetOrFindOfflineResourcesService", () => {
   // mock data
   const account = new AccountEntity(defaultAccountDto());
   const apiClientOptions = new ApiClientOptions().setBaseUrl("https://localhost");
 
   describe("::getOrFindAll", () => {
-    it("retrieves empty resources from the API when the local storage is not initialized", async () => {
+    it("retrieves empty resources from the offline storage when the local storage is not initialized", async () => {
       expect.assertions(6);
-      jest.spyOn(ResourceService.prototype, "findAll").mockImplementation(() => mockPassboltResponse([]));
       jest.spyOn(ResourceTypeService.prototype, "findAll").mockImplementation(() => resourceTypesCollectionDto());
-      jest.spyOn(FindAndUpdateResourcesLocalStorage.prototype, "findAndUpdateAll");
+      jest.spyOn(FindAndUpdateResourcesLocalStorageFromOPFSService.prototype, "findAndUpdateAll");
 
-      const service = new GetOrFindResourcesService(account, apiClientOptions);
+      const service = new GetOrFindOfflineResourcesService(account, apiClientOptions);
       const resources = await service.getOrFindAll();
 
-      expect(FindAndUpdateResourcesLocalStorage.prototype.findAndUpdateAll).toHaveBeenCalledTimes(1);
-      expect(FindAndUpdateResourcesLocalStorage.prototype.findAndUpdateAll).toHaveBeenCalledWith(); //to be verified as it's the default parameter value, I think it should be this way, but I can be wrong
+      expect(FindAndUpdateResourcesLocalStorageFromOPFSService.prototype.findAndUpdateAll).toHaveBeenCalledTimes(1);
+      expect(FindAndUpdateResourcesLocalStorageFromOPFSService.prototype.findAndUpdateAll).toHaveBeenCalledWith(); //to be verified as it's the default parameter value, I think it should be this way, but I can be wrong
       expect(resources).toBeInstanceOf(ResourcesCollection);
       expect(resources).toHaveLength(0);
       expect(ResourceLocalStorage.hasCachedData()).toBeTruthy();
       expect(await ResourceLocalStorage.get()).toEqual([]);
     });
 
-    it("retrieves resources of all types from the API when the local storage is not initialized.", async () => {
+    it("retrieves resources of all types from the offline storage when the local storage is not initialized.", async () => {
       expect.assertions(4);
       const resourcesDto = multipleResourceDtos();
-      jest.spyOn(ResourceService.prototype, "findAll").mockImplementation(() => mockPassboltResponse(resourcesDto));
+      jest.spyOn(OfflineResourcesOPFSStorage.prototype, "get").mockImplementation(() => resourcesDto);
       jest.spyOn(ResourceTypeService.prototype, "findAll").mockImplementation(() => resourceTypesCollectionDto());
 
-      const service = new GetOrFindResourcesService(account, apiClientOptions);
+      const service = new GetOrFindOfflineResourcesService(account, apiClientOptions);
       const resources = await service.getOrFindAll();
 
       expect(resources).toHaveLength(4);
@@ -92,7 +90,7 @@ describe("GetOrFindResourcesService", () => {
       jest.spyOn(ResourceTypeService.prototype, "findAll").mockImplementation(() => resourceTypesCollectionDto());
       await ResourceLocalStorage.set(new ResourcesCollection(resourcesDto));
 
-      const service = new GetOrFindResourcesService(account, apiClientOptions);
+      const service = new GetOrFindOfflineResourcesService(account, apiClientOptions);
       const resources = await service.getOrFindAll();
 
       expect(ResourceService.prototype.findAll).not.toHaveBeenCalled();
@@ -109,7 +107,7 @@ describe("GetOrFindResourcesService", () => {
       jest.spyOn(ResourcesCollection.prototype, "validateSchema");
       await ResourceLocalStorage.set(new ResourcesCollection([]));
 
-      const service = new GetOrFindResourcesService(account, apiClientOptions);
+      const service = new GetOrFindOfflineResourcesService(account, apiClientOptions);
       await service.getOrFindAll();
 
       expect(ResourceService.prototype.findAll).not.toHaveBeenCalled();
@@ -125,7 +123,7 @@ describe("GetOrFindResourcesService", () => {
       await ResourceLocalStorage.set(new ResourcesCollection([]));
       ResourceLocalStorage._cachedData = null;
 
-      const service = new GetOrFindResourcesService(account, apiClientOptions);
+      const service = new GetOrFindOfflineResourcesService(account, apiClientOptions);
       await service.getOrFindAll();
 
       expect(ResourceService.prototype.findAll).not.toHaveBeenCalled();
@@ -138,7 +136,7 @@ describe("GetOrFindResourcesService", () => {
     let service;
 
     beforeEach(() => {
-      service = new GetOrFindResourcesService(account, apiClientOptions);
+      service = new GetOrFindOfflineResourcesService(account, apiClientOptions);
     });
 
     it("should return an empty resource collection without URL", async () => {
@@ -173,16 +171,18 @@ describe("GetOrFindResourcesService", () => {
       });
       const notSuggestedResource2 = defaultResourceDto({ metadata: defaultResourceMetadataDto({ uris: [""] }) });
 
-      const resourcesCollectionDto = [
+      const resourcesCollections = new ResourcesCollection([
         suggestedResource1,
         suggestedResource2,
         notSuggestedResource1,
         notSuggestedResource2,
-      ];
+      ]);
       jest
-        .spyOn(ResourceService.prototype, "findAll")
-        .mockImplementation(() => mockPassboltResponse(resourcesCollectionDto));
-      jest.spyOn(ResourceTypeService.prototype, "findAll").mockImplementation(() => resourceTypesCollectionDto());
+        .spyOn(FindAndUpdateResourcesLocalStorageFromOPFSService.prototype, "findAndUpdateAll")
+        .mockImplementation(() => resourcesCollections);
+      jest
+        .spyOn(service.getOrFindResourceTypesService, "getOrFindAll")
+        .mockImplementation(() => new ResourceTypesCollection(resourceTypesCollectionDto()));
 
       const resources = await service.getOrFindSuggested("https://www.passbolt.com");
 
@@ -209,18 +209,20 @@ describe("GetOrFindResourcesService", () => {
         metadata: defaultResourceMetadataDto({ uris: [""] }),
       });
 
-      const resourcesCollectionDto = [
+      const resourcesCollections = new ResourcesCollection([
         suggestedResource1,
         suggestedResource2,
         notSuggestedResource1,
         notSuggestedResource2,
         notSuggestedResource3,
-      ];
+      ]);
 
       jest
-        .spyOn(ResourceService.prototype, "findAll")
-        .mockImplementation(() => mockPassboltResponse(resourcesCollectionDto));
-      jest.spyOn(ResourceTypeService.prototype, "findAll").mockImplementation(() => resourceTypesCollectionDto());
+        .spyOn(FindAndUpdateResourcesLocalStorageFromOPFSService.prototype, "findAndUpdateAll")
+        .mockImplementation(() => resourcesCollections);
+      jest
+        .spyOn(service.getOrFindResourceTypesService, "getOrFindAll")
+        .mockImplementation(() => new ResourceTypesCollection(resourceTypesCollectionDto()));
 
       const resources = await service.getOrFindSuggested("https://www.passbolt.com", "otp");
 
@@ -244,17 +246,19 @@ describe("GetOrFindResourcesService", () => {
       });
       const notSuggestedResource2 = defaultResourceDto({ metadata: defaultResourceMetadataDto({ uris: [""] }) });
 
-      const resourcesCollectionDto = [
+      const resourcesCollections = new ResourcesCollection([
         suggestedResource1,
         suggestedResource2,
         notSuggestedResource1,
         notSuggestedResource2,
-      ];
+      ]);
 
       jest
-        .spyOn(ResourceService.prototype, "findAll")
-        .mockImplementation(() => mockPassboltResponse(resourcesCollectionDto));
-      jest.spyOn(ResourceTypeService.prototype, "findAll").mockImplementation(() => resourceTypesCollectionDto());
+        .spyOn(FindAndUpdateResourcesLocalStorageFromOPFSService.prototype, "findAndUpdateAll")
+        .mockImplementation(() => resourcesCollections);
+      jest
+        .spyOn(service.getOrFindResourceTypesService, "getOrFindAll")
+        .mockImplementation(() => new ResourceTypesCollection(resourceTypesCollectionDto()));
 
       const resources = await service.getOrFindSuggested("https://www.passbolt.com", "test");
 
@@ -278,17 +282,19 @@ describe("GetOrFindResourcesService", () => {
       });
       const notSuggestedResource2 = defaultResourceDto({ metadata: defaultResourceMetadataDto({ uris: [""] }) });
 
-      const resourcesCollectionDto = [
+      const resourcesCollections = new ResourcesCollection([
         suggestedResource1,
         suggestedResource2,
         notSuggestedResource1,
         notSuggestedResource2,
-      ];
+      ]);
 
       jest
-        .spyOn(ResourceService.prototype, "findAll")
-        .mockImplementation(() => mockPassboltResponse(resourcesCollectionDto));
-      jest.spyOn(ResourceTypeService.prototype, "findAll").mockImplementation(() => resourceTypesCollectionDto());
+        .spyOn(FindAndUpdateResourcesLocalStorageFromOPFSService.prototype, "findAndUpdateAll")
+        .mockImplementation(() => resourcesCollections);
+      jest
+        .spyOn(service.getOrFindResourceTypesService, "getOrFindAll")
+        .mockImplementation(() => new ResourceTypesCollection(resourceTypesCollectionDto()));
 
       const resources = await service.getOrFindSuggested("https://www.passbolt.com");
 
@@ -301,60 +307,19 @@ describe("GetOrFindResourcesService", () => {
     it("should not return any resources if no suggestions are found.", async () => {
       expect.assertions(2);
 
-      const resourcesCollectionDto = resourceAllTypesDtosCollection();
+      const resourcesCollections = new ResourcesCollection(resourceAllTypesDtosCollection());
 
       jest
-        .spyOn(ResourceService.prototype, "findAll")
-        .mockImplementation(() => mockPassboltResponse(resourcesCollectionDto));
-      jest.spyOn(ResourceTypeService.prototype, "findAll").mockImplementation(() => resourceTypesCollectionDto());
+        .spyOn(FindAndUpdateResourcesLocalStorageFromOPFSService.prototype, "findAndUpdateAll")
+        .mockImplementation(() => resourcesCollections);
+      jest
+        .spyOn(service.getOrFindResourceTypesService, "getOrFindAll")
+        .mockImplementation(() => new ResourceTypesCollection(resourceTypesCollectionDto()));
 
       const resources = await service.getOrFindSuggested("https://www.not-passbolt.com");
 
       expect(resources).toBeInstanceOf(ResourcesCollection);
       expect(resources).toHaveLength(0);
-    });
-  });
-
-  describe("::getOrFindByIds", () => {
-    let service;
-
-    beforeEach(() => {
-      service = new GetOrFindResourcesService(account, apiClientOptions);
-    });
-    it("should assert the given parameters", async () => {
-      expect.assertions(1);
-
-      await expect(() => service.getOrFindByIds()).rejects.toThrow("The given parameter is not a valid array");
-    });
-
-    it("should filter the collection by the given ids", async () => {
-      expect.assertions(4);
-
-      const matchingIdResource1 = defaultResourceDto();
-      const matchingIdResource2 = defaultResourceDto();
-      const notMatchingIdResource1 = defaultResourceDto();
-      const notMatchingIdResource2 = defaultResourceDto();
-
-      const resourcesCollectionDto = [
-        matchingIdResource1,
-        matchingIdResource2,
-        notMatchingIdResource1,
-        notMatchingIdResource2,
-      ];
-
-      jest
-        .spyOn(ResourceService.prototype, "findAll")
-        .mockImplementation(() => mockPassboltResponse(resourcesCollectionDto));
-      jest.spyOn(ResourceTypeService.prototype, "findAll").mockImplementation(() => resourceTypesCollectionDto());
-
-      const expectedIds = [matchingIdResource1.id, matchingIdResource2.id];
-
-      const resources = await service.getOrFindByIds(expectedIds);
-
-      expect(resources).toBeInstanceOf(ResourcesCollection);
-      expect(resources).toHaveLength(2);
-      expect(resources.getFirstById(matchingIdResource1.id)).toBeTruthy();
-      expect(resources.getFirstById(matchingIdResource1.id)).toBeTruthy();
     });
   });
 });
